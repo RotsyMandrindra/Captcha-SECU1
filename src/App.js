@@ -1,64 +1,76 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import AWSWAFComponent from './AWSWAFComponent';
 
 function App() {
   const [inputValue, setInputValue] = useState('');
-  const [sequence, setSequence] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [showCaptcha, setShowCaptcha] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setLoading(true);
-    setSequence([]);
-
-    // Vérifier si l'entrée est valide
+    
     if (!/^\d+$/.test(inputValue) || inputValue < 1 || inputValue > 1000) {
       alert('Veuillez entrer un nombre entre 1 et 1000');
       return;
     }
+  
+    setLoading(true);
+    setShowCaptcha(false);
+  
+    if (inputValue === '100') {
+      setShowCaptcha(true);
+      return;
+    }
+  
+    generateSequence();
+  };
+  
 
-    // Générer la séquence
-    const generateSequence = async () => {
-      for (let i = 1; i <= parseInt(inputValue); i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Délai de 1 seconde
-        setSequence(prev => [...prev, `Forbidden ${i}`]);
-        
-        try {
-          const response = await axios.get('https://api.prod.jcloudify.com/whoami');
-          console.log(response.data);
-        } catch (error) {
-          if (error.response && error.response.status === 403) {
-            setShowCaptcha(true);
-            break;
-          }
-          throw error;
+  const generateSequence = async () => {
+    setLoading(true);
+    setShowCaptcha(false);
+  
+    const sequence = Array.from({ length: parseInt(inputValue) }, (_, i) => `Forbidden ${i + 1}`);
+  
+    const callAPIWithDelay = async (index) => {
+      await delay(1000); 
+      try {
+        const response = await fetch('https://api.prod.jcloudify.com/whoami');
+        console.log(`Réponse de l'API à l'index ${index}:`, await response.json());
+      } catch (error) {
+        if (error.response && error.response.status === 403) {
+          setShowCaptcha(true);
         }
+        throw error;
       }
     };
-
-    await generateSequence();
-
+  
+    for (let i = 0; i < sequence.length; i++) {
+      await callAPIWithDelay(i);
+    }
+  
+    setSequence(sequence);
     setLoading(false);
   };
+  
+  
 
-  const handleCaptchaResolved = async () => {
-    setShowCaptcha(false);
-    await generateSequence();
-  };
-
-  return (
+  rreturn (
     <div className="App">
       <form onSubmit={handleSubmit}>
+        <h2>Générer la séquence</h2>
+        <label htmlFor="numberInput">Entrez un nombre entre 1 et 1000 :</label>
         <input
           type="number"
+          id="numberInput"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           min="1"
           max="1000"
           required
         />
-        <button type="submit">Générer la séquence</button>
+        <button type="submit" disabled={loading}>Générer</button>
       </form>
 
       {loading ? (
@@ -72,10 +84,7 @@ function App() {
       )}
 
       {showCaptcha && (
-        <div>
-          <h3>Captcha résoudre</h3>
-          <button onClick={handleCaptchaResolved}>Résoudre le captcha</button>
-        </div>
+        <AWSWAFComponent onCaptchaCompleted={() => setShowCaptcha(false)} />
       )}
     </div>
   );
